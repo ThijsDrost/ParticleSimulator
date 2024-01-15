@@ -1,85 +1,83 @@
+use std::ops::Add;
 use nalgebra::Vector3;
+use rand::Rng;
 use crate::FloatType;
+use crate::particles::Particles;
 
-
-pub(crate) struct Particles {
-    pub positions: Vec<Vector3<FloatType>>,
-    pub box_size: Vector3<FloatType>,
-    pub temperature: FloatType,
+struct MonteCarlo {
+    pub beta_epsilon: FloatType,
+    particles: Particles,
+    energy: FloatType,
+    potential: fn(Particles) -> FloatType,
 }
 
-impl Particles {
-    fn _start(n: usize, temperature: FloatType, cell_length: FloatType, cells: Vector3<usize>) -> Particles {
-        let mut particles = Particles {
-            positions: Vec::with_capacity(n),
-            box_size: Vector3::new(cell_length*cells.x, cell_length*cells.y, cell_length*cells.z),
-            temperature: temperature,
-        };
-        particles
-    }
-
-    fn _push_simple(positions: &mut Vec<Vector3<FloatType>>, n: usize, start: Vector3<FloatType>,
-                    cell_length: FloatType, cells: Vector3<usize>){
-        let mut placed_particles = 0;
-        'outer: for i_x in 0..cells.x {
-            for i_y in 0..cells.y {
-                for i_z in 0..cells.z {
-                    if placed_particles >= n {
-                        break 'outer;
-                    }
-                    positions.push(Vector3::new(start.x + (i_x as FloatType)*cell_length,
-                                                start.y + (i_y as FloatType)*cell_length,
-                                                start.z + (i_z as FloatType)*cell_length));
-                    placed_particles += 1;
-                }
-            }
+impl MonteCarlo {
+    fn new(beta_epsilon: FloatType, particles: Particles, potential: fn(Particles) -> FloatType) -> MonteCarlo {
+        MonteCarlo {
+            beta_epsilon,
+            particles,
+            energy: 0.0,
+            potential,
         }
     }
 
-    pub fn volume(&self) -> FloatType {
-        self.box_size.x * self.box_size.y * self.box_size.z
+    pub fn crystal(beta_epsilon: FloatType, density: FloatType, cells: Vector3<usize>,
+               crystal_type: &str) -> MonteCarlo {
+        let particles = match crystal_type {
+            "simple" => Particles::simple_unit_cell(0, density, cells),
+            "bcc" => Particles::body_centered_cubic_cell(0, density, cells),
+            "fcc" => Particles::face_centered_cubic_cell(0, density, cells),
+            _ => panic!("Unknown crystal type"),
+        };
+        let beta_epsilon = beta_epsilon;
+        MonteCarlo::new(beta_epsilon, particles)
     }
 
-    pub fn body_centered_cubic_cell(n: usize, temperature: FloatType, density: FloatType,
-    cells: Vector3<usize>) -> Particles {
-        let cell_length = Particles::density_to_len(2, density);
-        let mut particles = Particles::simple_unit_cell(n/2 + n%2, temperature, cell_length, cells);
-        Particles::_push_simple(&mut particles.positions, n/2, Vector3::new(cell_length/2.0, cell_length/2.0, cell_length/2.0), cell_length, cells);
-        particles
+    pub fn get_particle(&self, i: usize) -> Vector3<FloatType> {
+        self.particles.position(i)
     }
 
-    pub fn simple_unit_cell(n: usize, temperature: FloatType, density: FloatType,
-                            cells: Vector3<usize>) -> Particles {
-        let cell_length = Particles::density_to_len(1, density);
-        let mut particles = Particles::_start(n, temperature, cell_length, cells);
-        Particles::_push_simple(&mut particles.positions, n, Vector3::zeros(), cell_length, cells);
-        particles
+    pub fn particles(&self) -> &Particles {
+        &self.particles
     }
 
-    pub fn face_centered_cubic_cell(n: usize, temperature: FloatType, density: FloatType,
-                                    cells: Vector3<usize>) -> Particles {
-        let mut n = if n % 4 == 0 { n/4 } else { n/4 + 1 };
-        let cell_length = Particles::density_to_len(4, density);
-        let mut particles = Particles::simple_unit_cell(n, temperature, cell_length, cells);
-        n = if n % 4 >= 2 { n/4 } else { n/4 + 1 };
-        Particles::_push_simple(&mut particles.positions, n, Vector3::new(cell_length/2.0, cell_length/2.0, 0.0), cell_length, cells);
-        n = if n % 4 >= 3 { n/4 } else { n/4 + 1 };
-        Particles::_push_simple(&mut particles.positions, n, Vector3::new(0.0, cell_length/2.0, cell_length/2.0), cell_length, cells);
-        n = n/4;
-        Particles::_push_simple(&mut particles.positions, n, Vector3::new(cell_length/2.0, 0.0, cell_length/2.0), cell_length, cells);
-        particles
+    pub fn step(&mut self, delta: FloatType) {
+        let mut rng = rand::thread_rng();
+        let i = rng.gen_range(0..self.particles.len());
+        let mut new_pos = self.particles.position(i);
+        new_pos.x += rng.gen_range(-delta..delta);
+        new_pos.y += rng.gen_range(-delta..delta);
+        new_pos.z += rng.gen_range(-delta..delta);
+        let delta_energy =
+        if delta_energy < 0.0 || rng.gen::<FloatType>() < (-self.beta_epsilon * delta_energy).exp() {
+            self.particles.set_position(i, new_pos);
+        }
     }
 
-    fn density_to_len(n: usize, density: FloatType) -> FloatType {
-        let ball_volume = std::f64::consts::PI / 6;
-        (n as FloatType * ball_volume / density).powf(1.0 / 3.0)
+    fn _energy(particles: &Particles, potential: fn(FloatType) -> FloatType ) -> FloatType {
+        let mut energy = 0.0;
+        for i in 0..particles.len() {
+            for j in i+1..particles.len() {
+                energy += potential(particles.dist(i, j));
+            }
+        }
+        energy
     }
 
-    fn len(&self) -> usize {
-        self.positions.len()
+    fn energy(&self) -> FloatType {
+        self._energy(&self.particles, self.potential)
     }
 
-    fn get(&self, index: usize) -> Vector3<FloatType> {
-        self.positions[index]
+    fn particle_energy(&self, i: usize) -> FloatType {
+        let neighbors = self.particles.neighbors(i);
+
     }
+
+    fn delta_energy(&self, i: usize, new_pos: Vector3<FloatType>) -> FloatType {
+        let mut delta_energy = 0.0;
+
+        delta_energy
+    }
+
+
 }
