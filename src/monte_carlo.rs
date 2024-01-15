@@ -20,8 +20,6 @@ impl Particles {
 
     fn _push_simple(positions: &mut Vec<Vector3<FloatType>>, n: usize, start: Vector3<FloatType>,
                     cell_length: FloatType, cells: Vector3<usize>){
-        let num = (n as FloatType).powf(1.0 / 3.0).ceil() as usize;
-
         let mut placed_particles = 0;
         'outer: for i_x in 0..cells.x {
             for i_y in 0..cells.y {
