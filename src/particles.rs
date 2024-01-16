@@ -5,8 +5,8 @@ use crate::FloatType;
 pub(crate) struct Particles {
     positions: Vec<Vector3<FloatType>>,
     pub box_size: Vector3<FloatType>,
-    cell: Vec<u16>,
-    cells_num: Vector3<u16>,
+    cell: Vec<usize>,
+    cells_num: Vector3<usize>,
 }
 
 impl Particles {
@@ -19,9 +19,9 @@ impl Particles {
             positions: Vec::with_capacity(n),
             box_size,
             cell: Vec::with_capacity(n),
-            cells_num: Vector3::new((box_size.x/min_cell_size) as u16,
-                                    (box_size.y/min_cell_size) as u16,
-                                    (box_size.z/min_cell_size) as u16),
+            cells_num: Vector3::new((box_size.x/min_cell_size) as usize,
+                                    (box_size.y/min_cell_size) as usize,
+                                    (box_size.z/min_cell_size) as usize),
         };
         particles
     }
@@ -50,7 +50,7 @@ impl Particles {
         }
     }
 
-    pub fn particles_in_cell(&self, cell: u16) -> Vec<usize> {
+    pub fn particles_in_cell(&self, cell: usize) -> Vec<usize> {
         self.positions.iter().enumerate().filter(|(i, _)| self.cell[i] == cell).collect()
     }
 
@@ -118,33 +118,40 @@ impl Particles {
         dist.norm()
     }
 
-    fn cell(&self, loc: Vector3<FloatType>) -> u16 {
-        let cell_x = (self.cells_num.x as FloatType * loc.x / self.box_size.x) as u16;
-        let cell_y = (self.cells_num.y as FloatType * loc.y / self.box_size.y) as u16;
-        let cell_z = (self.cells_num.z as FloatType * loc.z / self.box_size.z) as u16;
+    fn cell_num(&self, loc: Vector3<FloatType>) -> usize {
+        let cell_x = (self.cells_num.x as FloatType * loc.x / self.box_size.x) as usize;
+        let cell_y = (self.cells_num.y as FloatType * loc.y / self.box_size.y) as usize;
+        let cell_z = (self.cells_num.z as FloatType * loc.z / self.box_size.z) as usize;
         cell_x + cell_y*self.cells_num.x + cell_z*self.cells_num.x*self.cells_num.y
     }
-
-    fn neighbors(&self, i: usize) -> Vec<usize> {
-        let cell = self.cell[i];
-        let cell_indexes = Vector3::new(cell % self.cells_num.x,
-                                        (cell / self.cells_num.x) % self.cells_num.y,
-                                        cell / (self.cells_num.x * self.cells_num.y));
+    
+    fn cell_index(&self, i: usize) -> Vector3<usize> {
+        Vector3::new(i % self.cells_num.x,
+                     (i / self.cells_num.x) % self.cells_num.y,
+                     i / (self.cells_num.x * self.cells_num.y))
+    }
+    
+    fn neighbor_cells(&self, i: usize) -> Vec<usize> {
+        let cell_indexes = self.cell_index(i);
         let mut neighbors = Vec::new();
         for x_neigh in -1..1 {
             for y_neigh in -1..1 {
                 for z_neigh in -1..1 {
-                    let x = if (x_neigh != -1 || cell_indexes.x > 0) {(cell_indexes.x as i16 + x_neigh) as u16}
-                                 else { self.cells_num.x - 1 };
-                    let y = if (y_neigh != -1 || cell_indexes.y > 0) {(cell_indexes.y as i16 + y_neigh) as u16}
-                                 else { self.cells_num.y - 1 };
-                    let z = if (z_neigh != -1 || cell_indexes.z > 0) {(cell_indexes.z as i16 + z_neigh) as u16}
-                                 else { self.cells_num.z - 1 };
+                    let x = if (x_neigh != -1 || cell_indexes.x > 0) {(cell_indexes.x as i16 + x_neigh) as usize}
+                    else { self.cells_num.x - 1 };
+                    let y = if (y_neigh != -1 || cell_indexes.y > 0) {(cell_indexes.y as i16 + y_neigh) as usize}
+                    else { self.cells_num.y - 1 };
+                    let z = if (z_neigh != -1 || cell_indexes.z > 0) {(cell_indexes.z as i16 + z_neigh) as usize}
+                    else { self.cells_num.z - 1 };
                     let cell = x + y*self.cells_num.x + z*self.cells_num.x*self.cells_num.y;
-                    neighbors.extend(self.particles_in_cell(cell));
+                    neighbors.append(cell)
                 }
             }
         }
-        neighbors
+        neighbors = neighbors.sort().dedup();
+    }
+
+    fn neighbor_particle_indexes(&self, i: usize) -> Vec<usize> {
+        self.neighbor_cells(i).iter().map(|cell| self.particles_in_cell(*cell)).flatten().collect()
     }
 }

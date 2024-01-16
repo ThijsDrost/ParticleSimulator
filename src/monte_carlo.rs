@@ -70,7 +70,14 @@ impl MonteCarlo {
 
     fn particle_energy(&self, i: usize) -> FloatType {
         let neighbors = self.particles.neighbors(i);
-
+        let mut energy = 0.0;
+        for j in neighbors {
+            if i == j {
+                continue;
+            }
+            energy += self.potential(self.particles.dist(i, j));
+        }
+        energy
     }
 
     fn delta_energy(&self, i: usize, new_pos: Vector3<FloatType>) -> FloatType {

@@ -39,3 +39,5 @@ impl LennardJones_12_6 {
         LennardJones_12_6::_potential(r)
     }
 }
+
+pub static WCA: LennardJones_12_6 = LennardJones_12_6::new(2**(1/6));
