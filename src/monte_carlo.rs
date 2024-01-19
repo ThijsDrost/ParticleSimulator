@@ -3,16 +3,17 @@ use nalgebra::Vector3;
 use rand::Rng;
 use crate::FloatType;
 use crate::particles::Particles;
+use crate::interactions::Potential;
 
-struct MonteCarlo {
+struct MonteCarlo<T: Potential> {
     pub beta_epsilon: FloatType,
     particles: Particles,
     energy: FloatType,
-    potential: fn(Particles) -> FloatType,
+    potential: T,
 }
 
-impl MonteCarlo {
-    fn new(beta_epsilon: FloatType, particles: Particles, potential: fn(Particles) -> FloatType) -> MonteCarlo {
+impl MonteCarlo<T: Potential> {
+    fn new(beta_epsilon: FloatType, particles: Particles, potential: &impl Potential) -> MonteCarlo {
         MonteCarlo {
             beta_epsilon,
             particles,
@@ -21,16 +22,16 @@ impl MonteCarlo {
         }
     }
 
-    pub fn crystal(beta_epsilon: FloatType, density: FloatType, cells: Vector3<usize>,
-               crystal_type: &str) -> MonteCarlo {
+    pub fn crystal(beta_epsilon: FloatType, density: FloatType, potential: &impl Potential, cells: Vector3<usize>, crystal_type: &str)-> MonteCarlo {
+
         let particles = match crystal_type {
-            "simple" => Particles::simple_unit_cell(0, density, cells),
-            "bcc" => Particles::body_centered_cubic_cell(0, density, cells),
-            "fcc" => Particles::face_centered_cubic_cell(0, density, cells),
+            "simple" => Particles::simple_unit_cell(0, density, cells, min_cell_size),
+            "bcc" => Particles::body_centered_cubic_cell(0, density, cells, min_cell_size),
+            "fcc" => Particles::face_centered_cubic_cell(0, density, cells, min_cell_size),
             _ => panic!("Unknown crystal type"),
         };
         let beta_epsilon = beta_epsilon;
-        MonteCarlo::new(beta_epsilon, particles)
+        MonteCarlo::new(beta_epsilon, particles, potential)
     }
 
     pub fn get_particle(&self, i: usize) -> Vector3<FloatType> {
