@@ -10,7 +10,7 @@ pub(crate) struct Particles {
 }
 
 impl Particles {
-    fn _start(n: usize, cell_length: FloatType, cells: Vector3<usize>, min_cell_size: FloatType) -> Particles {
+    fn start(n: usize, cell_length: FloatType, cells: Vector3<usize>, min_cell_size: FloatType) -> Particles {
         let box_size = Vector3::new(cell_length*cells.x, cell_length*cells.y, cell_length*cells.z);
         if box_size.x < min_cell_size || box_size.y < min_cell_size || box_size.z < min_cell_size {
             panic!("Box size is too small");
@@ -26,8 +26,8 @@ impl Particles {
         particles
     }
 
-    fn _push_simple(positions: &mut Vec<Vector3<FloatType>>, n: usize, start: Vector3<FloatType>,
-                    cell_length: FloatType, cells: Vector3<usize>){
+    fn push_simple(positions: &mut Vec<Vector3<FloatType>>, n: usize, start: Vector3<FloatType>,
+                   cell_length: FloatType, cells: Vector3<usize>){
         let mut placed_particles = 0;
         'outer: for i_x in 0..cells.x {
             for i_y in 0..cells.y {
@@ -60,15 +60,15 @@ impl Particles {
 
     pub fn simple_unit_cell(n: usize, density: FloatType, cells: Vector3<usize>, min_cell_size: FloatType) -> Particles {
         let cell_length = Particles::density_to_len(1, density);
-        let mut particles = Particles::_start(n, cell_length, cells, min_cell_size);
-        Particles::_push_simple(&mut particles.positions, n, Vector3::zeros(), cell_length, cells);
+        let mut particles = Particles::start(n, cell_length, cells, min_cell_size);
+        Particles::push_simple(&mut particles.positions, n, Vector3::zeros(), cell_length, cells);
         particles
     }
 
     pub fn body_centered_cubic_cell(n: usize, density: FloatType, cells: Vector3<usize>, min_cell_size: FloatType) -> Particles {
         let cell_length = Particles::density_to_len(2, density);
         let mut particles = Particles::simple_unit_cell(n/2 + n%2, cell_length, cells, min_cell_size);
-        Particles::_push_simple(&mut particles.positions, n/2, Vector3::new(cell_length/2.0, cell_length/2.0, cell_length/2.0), cell_length, cells);
+        Particles::push_simple(&mut particles.positions, n/2, Vector3::new(cell_length/2.0, cell_length/2.0, cell_length/2.0), cell_length, cells);
         particles
     }
 
@@ -77,11 +77,11 @@ impl Particles {
         let cell_length = Particles::density_to_len(4, density);
         let mut particles = Particles::simple_unit_cell(n, cell_length, cells, min_cell_size);
         n = if n % 4 >= 2 { n/4 } else { n/4 + 1 };
-        Particles::_push_simple(&mut particles.positions, n, Vector3::new(cell_length/2.0, cell_length/2.0, 0.0), cell_length, cells);
+        Particles::push_simple(&mut particles.positions, n, Vector3::new(cell_length/2.0, cell_length/2.0, 0.0), cell_length, cells);
         n = if n % 4 >= 3 { n/4 } else { n/4 + 1 };
-        Particles::_push_simple(&mut particles.positions, n, Vector3::new(0.0, cell_length/2.0, cell_length/2.0), cell_length, cells);
+        Particles::push_simple(&mut particles.positions, n, Vector3::new(0.0, cell_length/2.0, cell_length/2.0), cell_length, cells);
         n = n/4;
-        Particles::_push_simple(&mut particles.positions, n, Vector3::new(cell_length/2.0, 0.0, cell_length/2.0), cell_length, cells);
+        Particles::push_simple(&mut particles.positions, n, Vector3::new(cell_length/2.0, 0.0, cell_length/2.0), cell_length, cells);
         particles
     }
 
@@ -106,33 +106,45 @@ impl Particles {
         &self.positions
     }
 
-    pub fn dist(&self, i: usize, j: usize) -> FloatType {
-        let mut dist = self.positions[i] - self.positions[j];
-        for i in 0..3 {
-            if dist[i] > self.box_size[i]/2.0 {
-                dist[i] -= self.box_size[i];
-            } else if dist[i] < -self.box_size[i]/2.0 {
-                dist[i] += self.box_size[i];
-            }
-        }
-        dist.norm()
+    pub fn particle_distance(&self, i: usize, j: Vector3<FloatType>) -> FloatType {
+        self.least_image_distance(self.positions[i] - j)
     }
 
-    fn cell_num(&self, loc: Vector3<FloatType>) -> usize {
+    pub fn particles_distance(&self, i: usize, j: usize) -> FloatType {
+        self.least_image_distance(self.positions[i] - self.positions[j])
+    }
+
+    fn least_image_distance(&self, mut vec: Vector3<FloatType>) -> FloatType {
+        for i in 0..3 {
+            if vec[i] > self.box_size[i]/2.0 {
+                vec[i] -= self.box_size[i];
+            } else if vec[i] < -self.box_size[i]/2.0 {
+                vec[i] += self.box_size[i];
+            }
+        }
+        vec.norm()
+    }
+
+    pub fn cell_num(&self, loc: Vector3<FloatType>) -> usize {
         let cell_x = (self.cells_num.x as FloatType * loc.x / self.box_size.x) as usize;
         let cell_y = (self.cells_num.y as FloatType * loc.y / self.box_size.y) as usize;
         let cell_z = (self.cells_num.z as FloatType * loc.z / self.box_size.z) as usize;
         cell_x + cell_y*self.cells_num.x + cell_z*self.cells_num.x*self.cells_num.y
     }
-    
-    fn cell_index(&self, i: usize) -> Vector3<usize> {
-        Vector3::new(i % self.cells_num.x,
-                     (i / self.cells_num.x) % self.cells_num.y,
-                     i / (self.cells_num.x * self.cells_num.y))
+
+    pub fn cell_coords(&self, cell_index: usize) -> Vector3<usize> {
+        Vector3::new(cell_index % self.cells_num.x,
+                     (cell_index / self.cells_num.x) % self.cells_num.y,
+                     cell_index / (self.cells_num.x * self.cells_num.y))
     }
-    
-    fn neighbor_cells(&self, i: usize) -> Vec<usize> {
-        let cell_indexes = self.cell_index(i);
+
+    pub fn neighbor_cells_particle(&self, particle_index: usize) -> Vec<usize> {
+        self.neighbor_cells_cell(self.cell[particle_index])
+    }
+
+    /// Includes cell itself
+    pub fn neighbor_cells_cell(&self, cell_index: usize) -> Vec<usize> {
+        let cell_indexes = self.cell_coords(cell_index);
         let mut neighbors = Vec::new();
         for x_neigh in -1..1 {
             for y_neigh in -1..1 {
@@ -144,14 +156,36 @@ impl Particles {
                     let z = if (z_neigh != -1 || cell_indexes.z > 0) {(cell_indexes.z as i16 + z_neigh) as usize}
                     else { self.cells_num.z - 1 };
                     let cell = x + y*self.cells_num.x + z*self.cells_num.x*self.cells_num.y;
-                    neighbors.append(cell)
+                    neighbors.push(cell);
                 }
             }
         }
-        neighbors = neighbors.sort().dedup();
+        neighbors.sort().dedup()
     }
 
-    fn neighbor_particle_indexes(&self, i: usize) -> Vec<usize> {
-        self.neighbor_cells(i).iter().map(|cell| self.particles_in_cell(*cell)).flatten().collect()
+    /// Excludes particle itself
+    pub fn particle_close_particles(&self, particle_index: usize) -> Vec<usize> {
+        self.neighbor_cells_particle(particle_index)
+            .iter()
+            .map(|cell| self.particles_in_cell(*cell))
+            .flatten()
+            .filter(|&i| i != particle_index)
+            .collect()
+    }
+
+    pub fn loc_close_particles(&self, loc: Vector3<FloatType>) -> Vec<usize> {
+        self.neighbor_cells_loc(loc)
+            .iter()
+            .map(|cell| self.particles_in_cell(*cell))
+            .flatten()
+            .collect()
+    }
+
+    pub fn cell_close_particles(&self, cell_index: usize) -> Vec<usize> {
+        self.neighbor_cells_cell(cell_index)
+            .iter()
+            .map(|cell| self.particles_in_cell(*cell))
+            .flatten()
+            .collect()
     }
 }

@@ -1,4 +1,3 @@
-use std::ops::Add;
 use nalgebra::Vector3;
 use rand::Rng;
 use crate::FloatType;
@@ -12,8 +11,8 @@ struct MonteCarlo<T: Potential> {
     potential: T,
 }
 
-impl MonteCarlo<T: Potential> {
-    fn new(beta_epsilon: FloatType, particles: Particles, potential: &impl Potential) -> MonteCarlo {
+impl<T> MonteCarlo<T> {
+    fn new(beta_epsilon: FloatType, particles: Particles, potential: &impl Potential) -> MonteCarlo<T> {
         MonteCarlo {
             beta_epsilon,
             particles,
@@ -22,12 +21,11 @@ impl MonteCarlo<T: Potential> {
         }
     }
 
-    pub fn crystal(beta_epsilon: FloatType, density: FloatType, potential: &impl Potential, cells: Vector3<usize>, crystal_type: &str)-> MonteCarlo {
-
+    pub fn crystal(beta_epsilon: FloatType, density: FloatType, potential: &impl Potential, cells: Vector3<usize>, crystal_type: &str)-> MonteCarlo<T> {
         let particles = match crystal_type {
-            "simple" => Particles::simple_unit_cell(0, density, cells, min_cell_size),
-            "bcc" => Particles::body_centered_cubic_cell(0, density, cells, min_cell_size),
-            "fcc" => Particles::face_centered_cubic_cell(0, density, cells, min_cell_size),
+            "simple" => Particles::simple_unit_cell(0, density, cells, potential.min_cell_size()),
+            "bcc" => Particles::body_centered_cubic_cell(0, density, cells, potential.min_cell_size()),
+            "fcc" => Particles::face_centered_cubic_cell(0, density, cells, potential.min_cell_size()),
             _ => panic!("Unknown crystal type"),
         };
         let beta_epsilon = beta_epsilon;
@@ -49,42 +47,42 @@ impl MonteCarlo<T: Potential> {
         new_pos.x += rng.gen_range(-delta..delta);
         new_pos.y += rng.gen_range(-delta..delta);
         new_pos.z += rng.gen_range(-delta..delta);
-        let delta_energy =
+        let delta_energy = self.delta_energy(i, new_pos);
         if delta_energy < 0.0 || rng.gen::<FloatType>() < (-self.beta_epsilon * delta_energy).exp() {
             self.particles.set_position(i, new_pos);
+            self.energy += delta_energy;
         }
     }
 
-    fn _energy(particles: &Particles, potential: fn(FloatType) -> FloatType ) -> FloatType {
+    fn _energy(particles: &Particles, potential: &impl Potential) -> FloatType {
         let mut energy = 0.0;
         for i in 0..particles.len() {
             for j in i+1..particles.len() {
-                energy += potential(particles.dist(i, j));
+                energy += potential.potential(particles.particles_distance(i, j));
             }
         }
         energy
     }
 
     fn energy(&self) -> FloatType {
-        self._energy(&self.particles, self.potential)
+        self._energy(&self.particles, &self.potential)
     }
 
-    fn particle_energy(&self, i: usize) -> FloatType {
-        let neighbors = self.particles.neighbors(i);
-        let mut energy = 0.0;
-        for j in neighbors {
-            if i == j {
-                continue;
-            }
-            energy += self.potential(self.particles.dist(i, j));
-        }
-        energy
+    fn particle_index_energy(&self, i: usize) -> FloatType {
+        let neighbors = self.particles.particle_close_particles(i);
+        neighbors.iter().map(|j| self.potential.potential(self.particles.particles_distance(i, *j))).sum()
+    }
+
+    fn particle_loc_energy(&self, loc: Vector3<FloatType>, exclude: usize) -> FloatType {
+        self.particles.loc_close_particles(loc)
+            .iter()
+            .filter(|i| **i != exclude)
+            .map(|j| self.potential.potential(self.particles.particle_distance(*j, loc)))
+            .sum()
     }
 
     fn delta_energy(&self, i: usize, new_pos: Vector3<FloatType>) -> FloatType {
-        let mut delta_energy = 0.0;
-
-        delta_energy
+        self.particle_loc_energy(new_pos, i) - self.particle_index_energy(i)
     }
 
 
