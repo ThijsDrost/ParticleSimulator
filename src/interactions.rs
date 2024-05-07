@@ -12,10 +12,11 @@ struct LennardJones_12_6 {
 }
 
 impl LennardJones_12_6 {
-    fn new(r_cut: FloatType) -> LennardJones_12_6 {
+    fn new(r_cut: f64) -> LennardJones_12_6 {
+        let r_cut_value = r_cut as FloatType;
         LennardJones_12_6 {
-            r_cut: r_cut,
-            r_cut_value: LennardJones_12_6::_potential(r_cut),
+            r_cut: r_cut_value,
+            r_cut_value: LennardJones_12_6::_potential(r_cut_value),
         }
     }
 
@@ -63,4 +64,4 @@ impl Potential for LennardJones_12_6 {
     }
 }
 
-pub static WCA: LennardJones_12_6 = LennardJones_12_6::new(2**(1/6));
+// pub static WCA: LennardJones_12_6 = LennardJones_12_6::new(2.0.powf(1./6.));

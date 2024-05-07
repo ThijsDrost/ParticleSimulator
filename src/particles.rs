@@ -1,29 +1,36 @@
 use nalgebra::Vector3;
+use rand::distributions::Uniform;
 use crate::FloatType;
+use crate::PI;
 
-
+/// A struct to store the particles in the simulation
 pub(crate) struct Particles {
+    /// The positions of the particles
     positions: Vec<Vector3<FloatType>>,
+    /// The total size of the box
     pub box_size: Vector3<FloatType>,
+    /// The cell in which the particle is located
     cell: Vec<usize>,
+    /// The number of cells in each direction
     cells_num: Vector3<usize>,
 }
 
 impl Particles {
     fn start(n: usize, cell_length: FloatType, cells: Vector3<usize>, min_cell_size: FloatType) -> Particles {
-        let box_size = Vector3::new(cell_length*cells.x, cell_length*cells.y, cell_length*cells.z);
+        let box_size = Vector3::new(cell_length*(cells.x as FloatType),
+                                    cell_length*(cells.y as FloatType),
+                                    cell_length*(cells.z as FloatType));
         if box_size.x < min_cell_size || box_size.y < min_cell_size || box_size.z < min_cell_size {
             panic!("Box size is too small");
         }
-        let mut particles = Particles {
+        Particles {
             positions: Vec::with_capacity(n),
             box_size,
             cell: Vec::with_capacity(n),
             cells_num: Vector3::new((box_size.x/min_cell_size) as usize,
                                     (box_size.y/min_cell_size) as usize,
                                     (box_size.z/min_cell_size) as usize),
-        };
-        particles
+        }
     }
 
     fn push_simple(positions: &mut Vec<Vector3<FloatType>>, n: usize, start: Vector3<FloatType>,
@@ -44,14 +51,17 @@ impl Particles {
         }
     }
 
-    fn put_cell(&self){
+    fn put_cell(&mut self){
         for i in 0..self.particle_num() {
-            self.cell[i] = self.cell(self.positions[i])
+            self.cell[i] = self.cell_num(self.positions[i])
         }
     }
 
     pub fn particles_in_cell(&self, cell: usize) -> Vec<usize> {
-        self.positions.iter().enumerate().filter(|(i, _)| self.cell[i] == cell).collect()
+        self.cell.iter()
+            .filter(|cell_num| **cell_num == cell)
+            .map(|&cell_num| cell_num)
+            .collect()
     }
 
     pub fn volume(&self) -> FloatType {
@@ -86,7 +96,7 @@ impl Particles {
     }
 
     fn density_to_len(n: usize, density: FloatType) -> FloatType {
-        let ball_volume = FloatType::consts::PI / 6;
+        let ball_volume = FloatType::PI() / 6.0;
         (n as FloatType * ball_volume / density).powf(1.0 / 3.0)
     }
 
@@ -99,7 +109,7 @@ impl Particles {
     }
 
     pub fn density(&self) -> FloatType {
-        (self.particle_num() as FloatType)*FloatType::consts::PI / (6*self.volume())
+        (self.particle_num() as FloatType)*FloatType::PI() / (6.0*self.volume())
     }
 
     pub fn get_positions(&self) -> &Vec<Vector3<FloatType>> {
@@ -160,7 +170,13 @@ impl Particles {
                 }
             }
         }
-        neighbors.sort().dedup()
+        neighbors.sort();
+        neighbors.dedup();
+        neighbors
+    }
+
+    pub fn neighbor_cells_loc(&self, loc: Vector3<FloatType>) -> Vec<usize> {
+        self.neighbor_cells_cell(self.cell_num(loc))
     }
 
     /// Excludes particle itself
@@ -188,4 +204,14 @@ impl Particles {
             .flatten()
             .collect()
     }
+
+    pub fn len(&self) -> usize {
+        self.positions.len()
+    }
+
+    pub fn set_position(&mut self, index: usize, position: Vector3<FloatType>) {
+        self.positions[index] = position;
+        self.cell[index] = self.cell_num(position);
+    }
+
 }
